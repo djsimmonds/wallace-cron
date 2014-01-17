@@ -1,0 +1,6 @@
+#!/bin/bash
+sleep 15
+env | tee -a /home/simmondsdj/tempLog
+printf "\n\n\n\n" | tee -a /home/simmondsdj/tempLog
+set | tee -a /home/simmondsdj/tempLog
+sleep 120

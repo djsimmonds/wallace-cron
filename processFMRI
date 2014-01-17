@@ -1,0 +1,138 @@
+#!/bin/bash
+
+# written: 20130312
+# last updated: 20130508
+# CHANGELOG
+  # 20130508
+    # volumes and scanID now in parent script, so that process functions can be used for all tasks
+
+set -e # stop if any error occurs
+set -x # print out progress on the script
+
+. ${FSLDIR}/etc/fslconf/fsl.sh # prevents error from occurring when trying to run BET
+
+#volumes=192 # length of run
+#scanID="SpatialWM_v1_run"
+
+# this code is specifically for the first 3 subjects of multimodal year 2 (working memory)
+  # had 190 volumes instead of 192 (because i made a mistake with the timing in eprime)
+if [ ${dirProcess##*/} == Multimodal ]; then
+  sessions190="10918_20130129 10912_20130131 10895_20130201" 
+  for s in $sessions190; do if [ $session == $s ]; then volumes=190; fi; done
+fi
+
+# initial variables
+scriptName=processFMRI
+tempStatus=$dirProcess/$id/$date/.${scan}_temp
+exitStatus=error
+exitText="script exited early"
+
+# if script exits with error, create appropriate status file and clean up
+function cleanup {
+  echo "$session $scan $exitText" | tee -a $tempStatus
+  date "+%F %H:%M:%S" | tee -a $tempStatus # time stamp of script end
+  ls -ahl $dirProcess/$id/$date/${scanID}${run}* 2>/dev/null | tee -a $tempStatus # print analysis folder contents to status file, if present
+  cat $dirProcess/$id/$date/${scanID}${run}*/preprocessFunctional.log 2>/dev/null | tee -a $tempStatus # print preprocessing log contents to status file, if present
+  mv $tempStatus $dirProcess/$id/$date/.${scan}_${exitStatus} # renames status file appropriately
+  scp $dirProcess/$id/$date/.${scan}_${exitStatus} $ipCopy:/$dirCopy/$id/$date/ # copies status file to dirCopy
+  rm -rf $dirProcess/$id/$date/${scanID}${run}* # remove analysis files
+}
+
+# create temp status file, version and time stamp
+date "+%F %H:%M:%S" | tee $tempStatus
+echo $scriptName | tee -a $tempStatus
+grep "last updated" $dirScripts/$scriptName | tee -a $tempStatus
+echo $session $scan | tee -a $tempStatus
+
+# set trap to run when script exits
+trap cleanup EXIT
+
+# delete any old analysis in dirProcess and dirCopy for this scan (due to cleanup, should be no files in dirProcess; however, including command to be safe)
+rm -f $dirProcess/$id/$date/.${scan}_{complete,error,missing,skip}
+ssh $ipCopy rm -f $dirCopy/$id/$date/.${scan}_{complete,error,missing,skip}
+rm -rf $dirProcess/$id/$date/${scanID}${run}*
+ssh $ipCopy rm -rf $dirCopy/$id/$date/${scanID}${run}*
+
+# location of raw data
+cd $dirSource/$session
+scanFiles=$( find -maxdepth 1 -name "${scanID}${run}*" | cut -d/ -f2 )
+fileCount=$( find -maxdepth 1 -name "${scanID}${run}*" | wc -l )
+
+# if no scan found
+if [ $fileCount -et 0 ]; then
+  echo "no scan found for $scan" | tee -a $tempStatus
+  exitStatus=missing
+  exit 1
+# if multiple scans found
+elif [ $fileCount -gt 1 ]; then
+  echo "more than one file found. checking to see which is the correct length..." | tee -a $tempStatus
+  fullScan=""
+  for scanFile in $scanFiles; do
+    dicoms=$( ls -l $scanFile/${dicomID}* | wc -l )
+    if [ $dicoms -eq $volumes ]; then
+      if [ -z $fullScan ]; then
+        echo "found scan with $volumes volumes: $scanFile" | tee -a $tempStatus
+      else
+        echo "multiple scans with $volumes volumes found: using later $scanFile instead of $fullScan" | tee -a $tempStatus
+      fi
+      fullScan=$scanFile
+    else
+      echo "scan length of $dicoms volumes is incorrect: $scanFile" | tee -a $tempStatus
+    fi
+  done
+  if [ -z $fullScan]; then
+    echo "no scans had correct number of volumes" | tee -a $tempStatus
+    exit 1
+  fi
+else
+  dicoms=$( ls -l $scanFiles/${dicomID}* | wc -l )
+  if [ $dicoms -eq $volumes ]; then
+    echo "found scan with $volumes volumes: $scanFiles" | tee -a $tempStatus
+    fullScan=$scanFiles
+  else
+    echo "scan length of $dicoms volumes is incorrect: $scanFile" | tee -a $tempStatus
+    exit 1
+  fi  
+fi
+
+# copy files to processing directory
+mkdir -p $dirProcess/$id/$date/$fullScan
+rsync -avz $dirSource/$session/$fullScan/${dicomID}* $dirProcess/$id/$date/$fullScan/
+
+# run preprocessing
+echo preprocessFunctional | tee -a $tempStatus
+grep "Last updated" $NITOOLS/processing_scripts/preprocessFunctional | tee -a $tempStatus
+
+cd $dirProcess/$id/$date/$fullScan
+preprocessFunctional \
+  -dicom "${dicomID}*" -delete_dicom yes \
+  -mprage_bet $dirProcess/$id/$date/*mprage*/mprage_bet.nii.gz \
+  -warpcoef $dirProcess/$id/$date/*mprage*/mprage_warpcoef.nii.gz \
+  -tr 2 \
+  -threshold 98_2 \
+  -hp_filter 80 \
+  -rescaling_method 10000_globalmedian \
+  -template_brain MNI_3mm \
+  -func_struc_dof bbr \
+  -slice_acquisition seqasc \
+  -motion_sinc y \
+  -warp_interpolation spline \
+  -constrain_to_template y \
+  -cleanup \
+  -startover \
+  -despike y \
+  -st_first
+
+# generate files for censoring high motion volumes
+1d_tool.py -infile mcplots.par -show_censor_count -censor_prev_TR -censor_motion 1 mcplots
+
+# error if processing not finished (preprocessed functionals not present or motion analysis didn't run)
+if [ ! -e "n*functional*.nii.gz" ] | [ ! -e "mcplots_CENSORTR.txt" ]; then
+  echo "ERROR: preprocessing not completed for $session $scan" | tee -a $tempStatus
+  exit 1
+fi
+
+# copy files to dirCopy and cleanup dirProcess
+rsync -avz $dirProcess/$id/$date/$fullScan ${ipCopy}:${dirCopy}/$id/$date/
+exitStatus="complete"
+exitText="complete"

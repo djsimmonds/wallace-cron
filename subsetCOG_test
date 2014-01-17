@@ -1,0 +1,14 @@
+files=$( echo Anti.State_{1,2,3,4} Mgs.Encode_{1,2,3} BIRC_ID Oxford_ID Scan_Date )
+
+# temporary subsample of data
+for f in $files; do
+  mv $f ${f}_temp
+  sed -n 200,205p ${f}_temp > $f
+done
+
+# reverse
+for f in $files; do
+  rm $f
+  mv ${f}_temp $f
+done
+

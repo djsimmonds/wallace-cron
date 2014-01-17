@@ -1,0 +1,150 @@
+#!/bin/bash
+
+# written: 20130510
+# last updated: 20130510
+# CHANGELOG
+
+#set -e # stop if any error occurs
+#set -x # print out progress on the script
+
+dirSources=$( echo /data/Luna1/Raw/{BIRC,NIC} ) # location of raw data - earlier data in BIRC, later in NIC
+dirProcess=/home/simmondsdj/COG # directory where processing occurs
+mkdir -p $dirProcess
+ipCopy=skynet # computer destination of processed data
+dirCopy=/Volumes/Phillips/COG # directory destination of processed data
+ssh $ipCopy mkdir -p $dirCopy
+dirScripts=/home/simmondsdj/scripts # qsub not running scripts without absolute path
+scans="MPR AS1 AS2 AS3 AS4 MS1 MS2 MS3 DTI" # which scans to process - for example: scans="MPRAGE TASK1 TASK2 TASK3 TASK4 REST DTI MRS"
+fmriScans="AS1 AS2 AS3 AS4 MS1 MS2 MS3" # these will be skipped if MPRAGE is missing or has error
+#email=djsimmonds+cron@gmail.com # email if error
+
+# set up PATH (cron only uses basic environment)
+export PATH=/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/sbin:/usr/sbin:/home/simmondsdj/scripts:/data/Luna1/ni_tools/processing_scripts:/data/Luna1/ni_tools/fsl/bin:/data/Luna1/ni_tools/afni_2Apr2013:/usr/local/packages/torque/2.4.16/bin:/usr/kerberos/bin
+#/home/simmondsdj/scripts # custom scripts
+#/data/Luna1/ni_tools/processing_scripts # preprocessFunctional, preprocessMprage
+#/data/Luna1/ni_tools/fsl/bin # fsl commands
+#/data/Luna1/ni_tools/afni # afni commands
+  # temp replacement with afni_2Apr2013, since newest version is gettin a python error with 1d_tool.py
+#/usr/local/packages/torque/2.4.16/bin:/usr/kerberos/bin # wallace paths
+
+# also might need FSLDIR and NITOOLS
+export FSLDIR=/data/Luna1/ni_tools/fsl
+export NITOOLS=/data/Luna1/ni_tools
+
+# get info to convert BIRC_ID to luna ID/scan date
+# DANI NOTE: this is in the cron-script on my computer, which is how I am linking the file from B: to skynet
+  # i initially tried to copy straight to wallace, but for some reason rsync and scp hang up for that transfer, probably due to the file system used to mount B:; instead copied from B: to skynet (no problems) and copied to wallace from skynet
+# 30 23 * * * rsync -avz mnt/rcn/bea_res/Eye\ Scoring/Anti-State&MGSEncode_data.xls skynet:/Volumes/Phillips/COG/
+#matchFile="Anti-State\&MGSEncode_data.xls"
+#scp skynet:${dirCopy}/$matchFile $dirProcess/
+#Rscript $dirScripts/cogSpreadsheet.R $dirProcess
+
+# loops through all sessions from data spreadsheet
+for session in $( cat $dirProcess/BIRC_ID ); do
+
+  # session info
+  ind=$( cat $dirProcess/BIRC_ID | grep $session -n | cut -d: -f1 ) # index of matching line
+  id=$( sed -n ${ind}p $dirProcess/Oxford_ID )
+  date=$( sed -n ${ind}p $dirProcess/Scan_Date )
+
+  # source directory must exist in order to proceed
+  dirSource=$( for src in $dirSources; do ls -d $src/$session 2>/dev/null; done )
+  if [ ! -d $dirSource ]; then echo "$ind $session $id $date ERROR: source directory not found"; continue; fi
+
+  # analysis directory
+  mkdir -p $dirProcess/$id/$date # creates if it doesn't already exist
+  cd $dirProcess/$id/$date
+  ssh $ipCopy mkdir -p $dirCopy/$id/$date # creates same directory at destination
+
+  # get dicom info for scans
+  if [ ! -f $dirProcess/$id/$date/dicomInfo ]; then
+    for d in $( ls -l $dirSource | grep "^d" | awk '{print $NF}' ); do
+      dicomInfo=$( dicom_hdr $( ls $dirSource/$d/*.dcm | head -1 | awk '{print $NF}' ) | grep 'ID Series Description' | cut -d/ -f5 )
+      echo $d $dicomInfo >> $dirProcess/$id/$date/dicomInfo
+    done
+  fi
+
+  # loop over scans
+  for scan in $scans; do
+
+    # if MPRAGE has error or is missing, mark fmri scans with skip so they don't get analyzed
+      # (they depend on MPRAGE for normalization to template space)
+    if [ $scan == "MPR" ]; then 
+      if [ -e ".${scan}_error" ] | [ -e ".${scan}_missing" ]; then
+        for f in $fmriScans; do date "+%F %H:%M" > .${f}_skip; echo "mprage is missing or has error" >> .${f}_skip; done
+      fi
+    fi
+
+    # if the scan is marked with with status (hidden file in directory, eg .MPRAGE_complete), skip to next scan
+    if [ ! -z $( find -maxdepth 1 -name ".${scan}*" ) ]; then continue; fi
+
+    # for name in qsub, using (last 4 digits of luna ID)_(date in YYMMDD format)_(3 digit scan name), so it fits in 15 characters
+    jobPrefix=${id:1}_${date:2}
+    jobName=${jobPrefix}_${scan}
+
+    # if fMRI scan and MPRAGE is still processing, tells qsub to wait for it before beginning
+    waitText=""
+    if [ -n "$( qstat -f | grep ${jobPrefix}_MPR )" ]; then 
+      jobID=$( qstat | awk -v str="${jobPrefix}_MPR" '$2 ~ str {print $1}' | cut -d. -f1 )
+      waitText="-W depend=afterok:${jobID} "
+    fi
+    
+    # if scan already running in qsub, skip
+    if [ -n "$( qstat -f | grep $jobName )" ]; then continue; fi;
+
+    # qsub not passing shell variables, so need to export
+    varList="dirSource dirProcess ipCopy dirCopy session id date scan"
+    export $varList
+
+    # process individual scans
+    case $scan in
+      MPR)
+        export scanDir=$( cat $dirProcess/$id/$date/dicomInfo | grep "t1_mprage*" | cut -d\  -f1 )
+        qsub -N $jobName -m abe -o $dirProcess/.log -j oe -v volumes=224 -V ${dirScripts}/processMPRAGE_COG
+        #qsub -N $jobName -m abe -o $dirProcess/.log -j oe -v volumes=192 -V ${dirScripts}/processMPRAGE_COG # early batch has different number of volumes
+        ;;
+      AS1)
+        scanDir=$( sed -n ${ind}p $dirProcess/Anti.State_1 )
+        export scanDir=$( for d in $( echo $dirSource/{00,0,}$scanDir ); do ls -d $d 2>/dev/null; done ) # some sessions have leading zeros, some don't
+        qsub -N $jobName -m abe -o $dirProcess/.log -j oe -v volumes=244 -V ${waitText}${dirScripts}/processFMRI_COG
+        ;;
+      AS2)
+        scanDir=$( sed -n ${ind}p $dirProcess/Anti.State_2 )
+        export scanDir=$( for d in $( echo $dirSource/{00,0,}$scanDir ); do ls -d $d 2>/dev/null; done ) # some sessions have leading zeros, some don't
+        qsub -N $jobName -m abe -o $dirProcess/.log -j oe -v volumes=244 -V ${waitText}${dirScripts}/processFMRI_COG
+        ;;
+      AS3)
+        scanDir=$( sed -n ${ind}p $dirProcess/Anti.State_3 )
+        export scanDir=$( for d in $( echo $dirSource/{00,0,}$scanDir ); do ls -d $d 2>/dev/null; done ) # some sessions have leading zeros, some don't
+        qsub -N $jobName -m abe -o $dirProcess/.log -j oe -v volumes=244 -V ${waitText}${dirScripts}/processFMRI_COG
+        ;;
+      AS4)
+        scanDir=$( sed -n ${ind}p $dirProcess/Anti.State_4 )
+        export scanDir=$( for d in $( echo $dirSource/{00,0,}$scanDir ); do ls -d $d 2>/dev/null; done ) # some sessions have leading zeros, some don't
+        qsub -N $jobName -m abe -o $dirProcess/.log -j oe -v volumes=244 -V ${waitText}${dirScripts}/processFMRI_COG
+        ;;
+      MS1)
+        scanDir=$( sed -n ${ind}p $dirProcess/Mgs.Encode_1 )
+        export scanDir=$( for d in $( echo $dirSource/{00,0,}$scanDir ); do ls -d $d 2>/dev/null; done ) # some sessions have leading zeros, some don't
+        qsub -N $jobName -m abe -o $dirProcess/.log -j oe -v volumes=229 -V ${waitText}${dirScripts}/processFMRI_COG
+        ;;
+      MS2)
+        scanDir=$( sed -n ${ind}p $dirProcess/Mgs.Encode_2 )
+        export scanDir=$( for d in $( echo $dirSource/{00,0,}$scanDir ); do ls -d $d 2>/dev/null; done ) # some sessions have leading zeros, some don't
+        qsub -N $jobName -m abe -o $dirProcess/.log -j oe -v volumes=229 -V ${waitText}${dirScripts}/processFMRI_COG
+        ;;
+      MS3)
+        scanDir=$( sed -n ${ind}p $dirProcess/Mgs.Encode_3 )
+        export scanDir=$( for d in $( echo $dirSource/{00,0,}$scanDir ); do ls -d $d 2>/dev/null; done ) # some sessions have leading zeros, some don't
+        qsub -N $jobName -m abe -o $dirProcess/.log -j oe -v volumes=229 -V ${waitText}${dirScripts}/processFMRI_COG
+        ;;
+      DTI)
+        export scanDir=$( cat $dirProcess/$id/$date/dicomInfo | grep "ep2d_diff_mddw6" | cut -d\  -f1 )
+        qsub -N $jobName -m abe -o $dirProcess/.log -j oe -v volumes=203 -V ${dirScripts}/processDTI_COG
+        ;;
+    esac
+
+    sleep 2 # pause for 2 seconds to make sure nothing falls behind
+
+  done
+done

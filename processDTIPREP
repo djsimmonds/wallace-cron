@@ -1,0 +1,8 @@
+# process single-subject DTI
+DTI () {
+  ID=$1
+  DATE=$2
+  # DTIPrep
+  DicomToNrrdConverter --inputDicomDirectory DICOM --outputVolume DTIPrepInput.nhdr
+  DTIPrep --DWINrrdFile DTIPrepInput.nhdr --xmlProtocol xmlFileName --default --outputFolder OutputFolder
+}

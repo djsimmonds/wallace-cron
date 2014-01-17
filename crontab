@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# written: 20130312
+# last updated: 20130508
+# CHANGELOG
+  # 20130508
+    # edited to include cog dataset and MultimodalWM
+
+# e-mails all output
+#MAILTO=djsimmonds@gmail.com
+
+# copies data and runs processing scripts and copies data over to skynet
+0 0 * * * /home/simmondsdj/scripts/cronEAOC
+0 1 * * * /home/simmondsdj/scripts/cronMM
+0 2 * * * /home/simmondsdj/scripts/cronCOG
+
+# weekly summary
+#0 0 * * 1 weeklySummary

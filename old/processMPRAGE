@@ -1,0 +1,116 @@
+#!/bin/bash
+
+# written: 20130312
+# last updated: 20130312
+# CHANGELOG
+
+set -e # stop if any error occurs
+set -x # print out progress on the script
+
+volumes=192 # number of dicoms
+scanID="axial_mprage_G2"
+#FSLDIR=/data/Luna1/ni_tools/fsl # script needs this location
+# ln -s /data/Luna1/ni_tools/standard_templates/ $HOME/standard # necessary for finding template; i have done this already
+
+# initial variables
+scriptName=processMPRAGE
+tempStatus=$dirProcess/$id/$date/.${scan}_temp
+exitStatus=error
+exitText="script exited early"
+
+# if script exits with error, create appropriate status file and clean up
+function cleanup {
+  echo "$session $scan $exitText" | tee -a $tempStatus
+  date "+%F %H:%M:%S" | tee -a $tempStatus # time stamp of script end
+  ls -ahl $dirProcess/$id/$date/$scanID* 2>/dev/null | tee -a $tempStatus # print analysis folder contents to status file, if present
+  mv $tempStatus $dirProcess/$id/$date/.${scan}_${exitStatus} # renames status file appropriately
+  scp $dirProcess/$id/$date/.${scan}_${exitStatus} $ipCopy:/$dirCopy/$id/$date/ # copies status file to dirCopy
+  if [ $exitStatus == "complete" ]; then
+    # leave bet and warpcoef file for functional processing
+    mkdir $dirProcess/$id/$date/temp
+    cp $dirProcess/$id/$date/$fullScan/mprage_{bet,warpcoef}.nii.gz $dirProcess/$id/$date/temp/
+    rm -rf $dirProcess/$id/$date/$fullScan # remove analysis files
+    mv $dirProcess/$id/$date/temp $dirProcess/$id/$date/$fullScan
+  else
+    rm -rf $dirProcess/$id/$date/$scanID* # remove analysis files
+  fi
+}
+
+# create temp status file, version and time stamp
+date "+%F %H:%M:%S" | tee $tempStatus
+echo $scriptName | tee -a $tempStatus
+grep "last updated" $dirScripts/$scriptName | tee -a $tempStatus
+echo $session $scan | tee -a $tempStatus
+
+# set trap to run when script exits
+trap cleanup EXIT
+
+# delete any old analysis in dirProcess and dirCopy for this scan (due to cleanup, should be no files in dirProcess; however, including command to be safe)
+rm -f $dirProcess/$id/$date/.$scan*
+ssh $ipCopy rm -f $dirCopy/$id/$date/.$scan*
+rm -rf $dirProcess/$id/$date/$scanID*
+ssh $ipCopy rm -rf $dirCopy/$id/$date/$scanID*
+
+# location of raw data
+cd $dirSource/$session
+scanFiles=$( find -maxdepth 1 -name "$scanID*" | cut -d/ -f2 )
+fileCount=$( find -maxdepth 1 -name "$scanID*" | wc -l )
+
+# if no scan found
+if [ $fileCount -et 0 ]; then
+  echo "no scan found for $scan" | tee -a $tempStatus
+  exitStatus=missing
+  exit 1
+# if multiple scans found
+elif [ $fileCount -gt 1 ]; then
+  echo "more than one file found. checking to see which is the correct length..." | tee -a $tempStatus
+  fullScan=""
+  for scanFile in $scanFiles; do
+    dicoms=$( ls -l $scanFile/MR* | wc -l )
+    if [ $dicoms -eq $volumes ]; then
+      if [ -z $fullScan ]; then
+        echo "found scan with $volumes volumes: $scanFile" | tee -a $tempStatus
+      else
+        echo "multiple scans with $volumes volumes found: using later $scanFile instead of $fullScan" | tee -a $tempStatus
+      fi
+      fullScan=$scanFile
+    else
+      echo "scan length of $dicoms volumes is incorrect: $scanFile" | tee -a $tempStatus
+    fi
+  done
+  if [ -z $fullScan]; then
+    echo "no scans had correct number of volumes" | tee -a $tempStatus
+    exit 1
+  fi
+else
+  dicoms=$( ls -l $scanFiles/MR* | wc -l )
+  if [ $dicoms -eq $volumes ]; then
+    echo "found scan with $volumes volumes: $scanFiles" | tee -a $tempStatus
+    fullScan=$scanFiles
+  else
+    echo "scan length of $dicoms volumes is incorrect: $scanFile" | tee -a $tempStatus
+    exit 1
+  fi  
+fi
+
+# copy files to processing directory
+mkdir -p $dirProcess/$id/$date/$fullScan
+rsync -avz $dirSource/$session/$fullScan/MR* $dirProcess/$id/$date/$fullScan/
+
+# run preprocessing
+echo preprocessMprage | tee -a $tempStatus
+grep "Last updated" $NITOOLS/processing_scripts/preprocessMprage | tee -a $tempStatus
+
+cd $dirProcess/$id/$date/$fullScan
+preprocessMprage -d y
+
+# error if processing not finished (preprocessed functionals not present or motion analysis didn't run)
+if [ ! -e "mprage_nonlinear_warp_MNI_2mm.nii.gz" ]; then
+  echo "ERROR: preprocessing not completed for $session $scan" | tee -a $tempStatus
+  exit 1
+fi
+
+# copy files to dirCopy and cleanup dirProcess
+rsync -avz $dirProcess/$id/$date/$fullScan ${ipCopy}:${dirCopy}/$id/$date/
+exitStatus="complete"
+exitText="complete"

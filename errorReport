@@ -1,0 +1,22 @@
+#!/bin/sh
+
+# shows report from errors
+
+path=$HOME/WorkingMemory
+errFile=$path/errorReport.txt
+
+echo "ERRORS: EAOC" > $errFile
+date "+%Y%m%d %H:%M:%S\n\n\n\n" >> $errFile
+
+cd $path
+
+for scan in $( ls ); do
+  echo $scan >> $errFile # subject id
+  echo $( ls $scan ) >> $errFile # date
+  for err in $( ls -a $scan/*/.*error ); do # error scans
+    echo -e "\n  $err \n" >> $errFile
+    cat $err >> $errFile
+  done
+  echo -e "\n\n\n\n" >> $errFile
+done
+

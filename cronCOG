@@ -20,6 +20,7 @@ fmriScans="AS1 AS2 AS3 AS4 MS1 MS2 MS3" # these will be skipped if MPRAGE is mis
 
 # set up PATH (cron only uses basic environment)
 export PATH=/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/sbin:/usr/sbin:/home/simmondsdj/scripts:/data/Luna1/ni_tools/processing_scripts:/data/Luna1/ni_tools/fsl/bin:/data/Luna1/ni_tools/afni_2Apr2013:/usr/local/packages/torque/2.4.16/bin:/usr/kerberos/bin
+#/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/sbin:/usr/sbin # basic paths
 #/home/simmondsdj/scripts # custom scripts
 #/data/Luna1/ni_tools/processing_scripts # preprocessFunctional, preprocessMprage
 #/data/Luna1/ni_tools/fsl/bin # fsl commands
@@ -35,9 +36,9 @@ export NITOOLS=/data/Luna1/ni_tools
 # DANI NOTE: this is in the cron-script on my computer, which is how I am linking the file from B: to skynet
   # i initially tried to copy straight to wallace, but for some reason rsync and scp hang up for that transfer, probably due to the file system used to mount B:; instead copied from B: to skynet (no problems) and copied to wallace from skynet
 # 30 23 * * * rsync -avz mnt/rcn/bea_res/Eye\ Scoring/Anti-State&MGSEncode_data.xls skynet:/Volumes/Phillips/COG/
-#matchFile="Anti-State\&MGSEncode_data.xls"
-#scp skynet:${dirCopy}/$matchFile $dirProcess/
-#Rscript $dirScripts/cogSpreadsheet.R $dirProcess
+matchFile="Anti-State\&MGSEncode_data.xls"
+scp skynet:${dirCopy}/$matchFile $dirProcess/
+Rscript $dirScripts/cogSpreadsheet.R $dirProcess
 
 # loops through all sessions from data spreadsheet
 for session in $( cat $dirProcess/BIRC_ID ); do
@@ -70,7 +71,7 @@ for session in $( cat $dirProcess/BIRC_ID ); do
     # if MPRAGE has error or is missing, mark fmri scans with skip so they don't get analyzed
       # (they depend on MPRAGE for normalization to template space)
     if [ $scan == "MPR" ]; then 
-      if [ -e ".${scan}_error" ] | [ -e ".${scan}_missing" ]; then
+      if [ -e ".${scan}_error" ] || [ -e ".${scan}_missing" ]; then
         for f in $fmriScans; do date "+%F %H:%M" > .${f}_skip; echo "mprage is missing or has error" >> .${f}_skip; done
       fi
     fi
@@ -97,45 +98,50 @@ for session in $( cat $dirProcess/BIRC_ID ); do
     export $varList
 
     # process individual scans
+    # quick notes:
+      # early mprages had different number of volumes
+      # for functional scans, some sessions have leading zeros, some don't
     case $scan in
       MPR)
         export scanDir=$( cat $dirProcess/$id/$date/dicomInfo | grep "t1_mprage*" | cut -d\  -f1 )
         qsub -N $jobName -m abe -o $dirProcess/.log -j oe -v volumes=224 -V ${dirScripts}/processMPRAGE_COG
-        #qsub -N $jobName -m abe -o $dirProcess/.log -j oe -v volumes=192 -V ${dirScripts}/processMPRAGE_COG # early batch has different number of volumes
+        # early batch has different number of volumes
+        #qsub -N $jobName -m abe -o $dirProcess/.log -j oe -v volumes=192 -V ${dirScripts}/processMPRAGE_COG
+        sleep 10 # gives mprage time to process/error out before beginning functional scans
         ;;
       AS1)
         scanDir=$( sed -n ${ind}p $dirProcess/Anti.State_1 )
-        export scanDir=$( for d in $( echo $dirSource/{00,0,}$scanDir ); do ls -d $d 2>/dev/null; done ) # some sessions have leading zeros, some don't
+        export scanDir=$( for d in $( echo $dirSource/{00,0,}$scanDir ); do ls -d $d 2>/dev/null; done )
         qsub -N $jobName -m abe -o $dirProcess/.log -j oe -v volumes=244 -V ${waitText}${dirScripts}/processFMRI_COG
         ;;
       AS2)
         scanDir=$( sed -n ${ind}p $dirProcess/Anti.State_2 )
-        export scanDir=$( for d in $( echo $dirSource/{00,0,}$scanDir ); do ls -d $d 2>/dev/null; done ) # some sessions have leading zeros, some don't
+        export scanDir=$( for d in $( echo $dirSource/{00,0,}$scanDir ); do ls -d $d 2>/dev/null; done )
         qsub -N $jobName -m abe -o $dirProcess/.log -j oe -v volumes=244 -V ${waitText}${dirScripts}/processFMRI_COG
         ;;
       AS3)
         scanDir=$( sed -n ${ind}p $dirProcess/Anti.State_3 )
-        export scanDir=$( for d in $( echo $dirSource/{00,0,}$scanDir ); do ls -d $d 2>/dev/null; done ) # some sessions have leading zeros, some don't
+        export scanDir=$( for d in $( echo $dirSource/{00,0,}$scanDir ); do ls -d $d 2>/dev/null; done )
         qsub -N $jobName -m abe -o $dirProcess/.log -j oe -v volumes=244 -V ${waitText}${dirScripts}/processFMRI_COG
         ;;
       AS4)
         scanDir=$( sed -n ${ind}p $dirProcess/Anti.State_4 )
-        export scanDir=$( for d in $( echo $dirSource/{00,0,}$scanDir ); do ls -d $d 2>/dev/null; done ) # some sessions have leading zeros, some don't
+        export scanDir=$( for d in $( echo $dirSource/{00,0,}$scanDir ); do ls -d $d 2>/dev/null; done )
         qsub -N $jobName -m abe -o $dirProcess/.log -j oe -v volumes=244 -V ${waitText}${dirScripts}/processFMRI_COG
         ;;
       MS1)
         scanDir=$( sed -n ${ind}p $dirProcess/Mgs.Encode_1 )
-        export scanDir=$( for d in $( echo $dirSource/{00,0,}$scanDir ); do ls -d $d 2>/dev/null; done ) # some sessions have leading zeros, some don't
+        export scanDir=$( for d in $( echo $dirSource/{00,0,}$scanDir ); do ls -d $d 2>/dev/null; done )
         qsub -N $jobName -m abe -o $dirProcess/.log -j oe -v volumes=229 -V ${waitText}${dirScripts}/processFMRI_COG
         ;;
       MS2)
         scanDir=$( sed -n ${ind}p $dirProcess/Mgs.Encode_2 )
-        export scanDir=$( for d in $( echo $dirSource/{00,0,}$scanDir ); do ls -d $d 2>/dev/null; done ) # some sessions have leading zeros, some don't
+        export scanDir=$( for d in $( echo $dirSource/{00,0,}$scanDir ); do ls -d $d 2>/dev/null; done )
         qsub -N $jobName -m abe -o $dirProcess/.log -j oe -v volumes=229 -V ${waitText}${dirScripts}/processFMRI_COG
         ;;
       MS3)
         scanDir=$( sed -n ${ind}p $dirProcess/Mgs.Encode_3 )
-        export scanDir=$( for d in $( echo $dirSource/{00,0,}$scanDir ); do ls -d $d 2>/dev/null; done ) # some sessions have leading zeros, some don't
+        export scanDir=$( for d in $( echo $dirSource/{00,0,}$scanDir ); do ls -d $d 2>/dev/null; done )
         qsub -N $jobName -m abe -o $dirProcess/.log -j oe -v volumes=229 -V ${waitText}${dirScripts}/processFMRI_COG
         ;;
       DTI)
@@ -144,7 +150,7 @@ for session in $( cat $dirProcess/BIRC_ID ); do
         ;;
     esac
 
-    sleep 2 # pause for 2 seconds to make sure nothing falls behind
+    #sleep 1 # pause for 1 second to make sure nothing falls behind
 
   done
 done

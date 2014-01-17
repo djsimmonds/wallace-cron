@@ -21,8 +21,10 @@ for(j in 4:7){
   tempSplit <- t(sapply(1:length(anti[,j]), function(i){
     temp <- strsplit(anti[i,j], "(", fixed=TRUE)[[1]]
     if(length(temp) < 2) temp <- c("","") # if no scan, put in 2 empty strings
-    if(length(temp) > 2) temp <- temp[1:2] # TEMPFIX: encountered error in spreadsheet with extra parenthesis, can take this line out once fixed
-    if(nchar(temp[2])==3) temp[2] <- paste(0, temp[2], sep="") # for script, some put a 0 before single digits, some don't (ex, "3AV" vs. "03AV"), changing so all have leading zero
+    if(length(temp) > 2) temp <- temp[1:2] # TEMPFIX: encountered error in spreadsheet with extra parenthesis, can take this line 
+out once fixed
+    if(nchar(temp[2])==3) temp[2] <- paste(0, temp[2], sep="") # for script, some put a 0 before single digits, some don't (ex, 
+"3AV" vs. "03AV"), changing so all have leading zero
     temp
   }))
   anti[,j] <- tempSplit[,1]
@@ -32,7 +34,7 @@ names(anti)[8:11] <- paste(names(anti)[4:7], "script", sep="_")
 
 # merge anti and MGS spreadsheets, fix formatting issues
 merged <- merge(anti, mgs, all=TRUE, by=c("BIRC_ID", "Oxford_ID", "Scan_Date"))
-merged$Scan_Date <- format(as.Date(merged$Scan_Date, format="%m/%d/%Y"), "%Y%m%d")
+merged$Scan_Date <- gsub("-", "", merged$Scan_Date)
 merged$BIRC_ID <- ifelse(nchar(merged$BIRC_ID)==11, paste(0, merged$BIRC_ID, sep=""), merged$BIRC_ID)
 
 # write tables, including the whole merged table and then separately for variables for easy processing

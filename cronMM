@@ -20,11 +20,7 @@ scans="MPRAGE MM_RUN1 MM_RUN2 MM_RUN3 MM_RUN4 DTI" # which scans to process - fo
 fmriScans="MM_RUN1 MM_RUN2 MM_RUN3 MM_RUN4" # these will be skipped if MPRAGE is missing or has error
 dicomID="MR"
 #email=djsimmonds+cron@gmail.com # email if error
-
-## NOTE: for some reason, the scanner named run4 with misspelled "Multimodall" - fixing
-#misspelled=$( ls -d $dirSource/*/Multimodall* )
-#for m in $misspelled; do mv $m ${m//Multimodall/Multimodal}; done
-
+   
 # source directory must exist in order to proceed
 if [ ! -d $dirSource ]; then echo "source directory not found"; exit 1; fi
 cd $dirSource

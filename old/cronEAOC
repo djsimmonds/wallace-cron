@@ -1,0 +1,80 @@
+#!/bin/bash
+
+# written: 20130312
+# last updated: 20130312
+# CHANGELOG
+
+set -e # stop if any error occurs
+set -x # print out progress on the script
+
+dirSource=/data/Luna1/Raw/WorkingMemory # location of raw data
+#dirSource=/home/simmondsdj/WorkingMemorySource # location of raw data
+dirProcess=/home/simmondsdj/WorkingMemory # directory where processing occurs
+mkdir -p $dirProcess
+ipCopy=skynet # computer destination of processed data
+dirCopy=/Volumes/Phillips/WorkingMemory # directory destination of processed data
+ssh $ipCopy mkdir -p $dirCopy
+dirScripts=/home/simmondsdj/scripts # qsub not running scripts without absolute path
+scans="MPRAGE WM_RUN1 WM_RUN2 WM_RUN3 WM_RUN4 DTI" # which scans to process - for example: scans="MPRAGE TASK1 TASK2 TASK3 TASK4 REST DTI MRS"
+fmriScans="WM_RUN1 WM_RUN2 WM_RUN3 WM_RUN4" # these will be skipped if MPRAGE is missing or has error
+email=djsimmonds+cron@gmail.com # email if error
+
+. ${FSLDIR}/etc/fslconf/fsl.sh # for some reason paths with fsl are messed up
+   
+# source directory must exist in order to proceed
+if [ ! -d $dirSource ]; then echo "source directory not found"; exit 1; fi
+cd $dirSource
+
+# loops through all sessions in raw data folder
+for session in $( ls ); do
+
+  # session info
+  id=$( echo $session | cut -d_ -f1 )
+  date=$( echo $session | cut -d_ -f2 )
+
+  # analysis directory
+  mkdir -p $dirProcess/$id/$date # creates if it doesn't already exist
+  ssh $ipCopy mkdir -p $dirCopy/$id/$date # creates same directory at destination
+  cd $dirProcess/$id/$date
+  
+  # loop over scans
+  for scan in $scans; do
+    
+    # if MPRAGE has error or is missing, mark fmri scans with skip so they don't get analyzed
+      # (they depend on MPRAGE for normalization to template space)
+    if [ $scan == "MPRAGE" ]; then 
+      if [ -e ".${scan}_error" ] | [ -e ".${scan}_missing" ]; then
+        for f in $fmriScans; do $date "+%F %H:%M" > .${f}_skip; echo "mprage is missing or has error" >> .${f}_skip; done
+      fi
+    fi
+
+    # if the scan is marked with with status (hidden file in directory, eg .MPRAGE_complete), skip to next scan
+    if [ ! -z $( find -maxdepth 1 -name ".${scan}*" ) ]; then continue; fi
+
+    # if fMRI scan and MPRAGE is still processing, tells qsub to wait for it before beginning
+    waitText=""
+    if [ -n "$( qstat -f | grep ${id}_MPRAGE )" ]; then 
+      jobID=$( qstat | awk -v str="${id}_MPRAGE" '$2 ~ str {print $1}' | cut -d. -f1 )
+      waitText="-W depend=afterok:${jobID} "
+    fi
+    
+    # if scan already running in qsub, skip
+    if [ -n "$( qstat -f | grep ${id}_${scan} )" ]; then continue; fi;
+
+    # qsub not passing shell variables, so need to export
+    varList="dirSource dirProcess ipCopy dirCopy session id date scan"
+    export $varList
+
+    # process individual scans
+    case $scan in
+      MPRAGE) qsub -N ${id}_${scan} -m abe -M $email -o $dirProcess/.log -j oe -V ${dirScripts}/processMPRAGE;; # assigning to variable if wait necessary for fMRI
+      WM_RUN1) qsub -N ${id}_${scan} -m abe -M $email -o $dirProcess/.log -j oe -v run=1 -V ${waitText}${dirScripts}/processFMRI;;
+      WM_RUN2) qsub -N ${id}_${scan} -m abe -M $email -o $dirProcess/.log -j oe -v run=2 -V ${waitText}${dirScripts}/processFMRI;;
+      WM_RUN3) qsub -N ${id}_${scan} -m abe -M $email -o $dirProcess/.log -j oe -v run=3 -V ${waitText}${dirScripts}/processFMRI;;
+      WM_RUN4) qsub -N ${id}_${scan} -m abe -M $email -o $dirProcess/.log -j oe -v run=4 -V ${waitText}${dirScripts}/processFMRI;;
+      DTI) qsub -N ${id}_${scan} -m abe -M $email -o $dirProcess/.log -j oe -V ${dirScripts}/processDTI;;
+    esac
+    
+  done
+  
+done

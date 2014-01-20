@@ -1,0 +1,7 @@
+path=/home/simmondsdj/scripts/test
+17 0 * * * $path/echoTest_cron
+17 0 * * * $path/prepTest_cron
+17 0 * * * $path/echoTest_cron_qsub
+17 0 * * * $path/prepTest_cron_qsub
+17 0 * * * $path/echoTest_cron_qsubTest
+17 0 * * * $path/prepTest_cron_qsubTest

@@ -1,0 +1,13 @@
+#!/bin/sh
+
+# flip through errors manually one by one, pressing a key to continue each time
+
+path=$HOME/WorkingMemory
+cd $path
+
+for err in $( ls 1*/*/.*error ); do
+  cat $err
+  echo $err
+  read
+done
+

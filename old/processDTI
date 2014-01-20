@@ -1,0 +1,111 @@
+#!/bin/bash
+
+# written: 20130312
+# last updated: 20130312
+# CHANGELOG
+
+set -e # stop if any error occurs
+set -x # print out progress on the script
+
+volumes=31 # number of dicoms
+scanID="dti_30dirs_68slices_1152x1152"
+
+# initial variables
+scriptName=processDTI
+tempStatus=$dirProcess/$id/$date/.${scan}_temp
+exitStatus=error
+exitText="script exited early"
+
+# if script exits with error, create appropriate status file and clean up
+function cleanup {
+  echo "$session $scan $exitText" | tee -a $tempStatus
+  date "+%F %H:%M:%S" | tee -a $tempStatus # time stamp of script end
+  ls -ahl $dirProcess/$id/$date/$scanID* 2>/dev/null | tee -a $tempStatus # print analysis folder contents to status file, if present
+  mv $tempStatus $dirProcess/$id/$date/.${scan}_${exitStatus} # renames status file appropriately
+  scp $dirProcess/$id/$date/.${scan}_${exitStatus} $ipCopy:/$dirCopy/$id/$date/ # copies status file to dirCopy
+  rm -rf $dirProcess/$id/$date/$scanID* # remove analysis files
+}
+
+# create temp status file, version and time stamp
+date "+%F %H:%M:%S" | tee $tempStatus
+echo $scriptName | tee -a $tempStatus
+grep "last updated" $dirScripts/$scriptName | tee -a $tempStatus
+echo $session $scan | tee -a $tempStatus
+
+# set trap to run when script exits
+trap cleanup EXIT
+
+# delete any old analysis in dirProcess and dirCopy for this scan (due to cleanup, should be no files in dirProcess; however, including command to be safe)
+rm -f $dirProcess/$id/$date/.$scan*
+ssh $ipCopy rm -f $dirCopy/$id/$date/.$scan*
+rm -rf $dirProcess/$id/$date/$scanID*
+ssh $ipCopy rm -rf $dirCopy/$id/$date/$scanID*
+
+# location of raw data
+cd $dirSource/$session
+scanFiles=$( find -maxdepth 1 -name "$scanID*" | cut -d/ -f2 )
+fileCount=$( find -maxdepth 1 -name "$scanID*" | wc -l )
+
+# if no scan found
+if [ $fileCount -et 0 ]; then
+  echo "no scan found for $scan" | tee -a $tempStatus
+  exitStatus=missing
+  exit 1
+# if multiple scans found
+elif [ $fileCount -gt 1 ]; then
+  echo "more than one file found. checking to see which is the correct length..." | tee -a $tempStatus
+  fullScan=""
+  for scanFile in $scanFiles; do
+    dicoms=$( ls -l $scanFile/MR* | wc -l )
+    if [ $dicoms -eq $volumes ]; then
+      if [ -z $fullScan ]; then
+        echo "found scan with $volumes volumes: $scanFile" | tee -a $tempStatus
+      else
+        echo "multiple scans with $volumes volumes found: using later $scanFile instead of $fullScan" | tee -a $tempStatus
+      fi
+      fullScan=$scanFile
+    else
+      echo "scan length of $dicoms volumes is incorrect: $scanFile" | tee -a $tempStatus
+    fi
+  done
+  if [ -z $fullScan]; then
+    echo "no scans had correct number of volumes" | tee -a $tempStatus
+    exit 1
+  fi
+else
+  dicoms=$( ls -l $scanFiles/MR* | wc -l )
+  if [ $dicoms -eq $volumes ]; then
+    echo "found scan with $volumes volumes: $scanFiles" | tee -a $tempStatus
+    fullScan=$scanFiles
+  else
+    echo "scan length of $dicoms volumes is incorrect: $scanFile" | tee -a $tempStatus
+    exit 1
+  fi  
+fi
+
+# copy files to processing directory
+mkdir -p $dirProcess/$id/$date/$fullScan
+rsync -avz $dirSource/$session/$fullScan/MR* $dirProcess/$id/$date/$fullScan/
+
+# run preprocessing
+cd $dirProcess/$id/$date/$fullScan
+dcm2nii MR*
+rm MR*
+mv *.nii.gz ${session}_raw.nii.gz
+mv *.bvec ${session}.bvec
+mv *.bval ${session}.bval
+bet ${session}_raw ${session}_brain.nii.gz -f 0.3 -m # brain extraction
+eddy_correct ${session}_raw.nii.gz ${session}_eddy.nii.gz 0 # correct for eddy current distortion and motion
+dtifit --data=${session}_eddy.nii.gz --out=${session} --mask=${session}_brain_mask.nii.gz --bvecs=${session}.bvec --bvals=${session}.bval # fit tensors
+fslmaths ${session}_L2.nii.gz -add ${session}_L3.nii.gz -div 2 ${session}_RD.nii.gz # calculate RD since it's not done automatically
+
+# error if processing not finished (preprocessed functionals not present or motion analysis didn't run)
+if [ ! -e "${session}_RD.nii.gz" ]; then
+  echo "ERROR: preprocessing not completed for $session $scan" | tee -a $tempStatus
+  exit 1
+fi
+
+# copy files to dirCopy and cleanup dirProcess
+rsync -avz $dirProcess/$id/$date/$fullScan ${ipCopy}:${dirCopy}/$id/$date/
+exitStatus="complete"
+exitText="complete"

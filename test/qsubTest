@@ -1,0 +1,2 @@
+#!/bin/sh
+path=/home/simmondsdj/scripts/test; export c=k; f=z; qsub -o $1 -j oe -V $2; export -n a

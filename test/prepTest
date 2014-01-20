@@ -1,0 +1,2 @@
+#!/bin/sh
+path=/home/simmondsdj/scripts/test; export a=i; b=j; sh $path/echoTest; export -n a

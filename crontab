@@ -6,23 +6,8 @@
   # 20130508
     # edited to include cog dataset and MultimodalWM
 
-# directories
-#HOME=/home/simmondsdj
-#NITOOLS=/data/Luna1/ni_tools
-#export FSLDIR=/data/Luna1/ni_tools/fsl
-
-# PATH
-# NOTE: tried to use variables in defining path, but cron said no
-#export PATH=/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/sbin:/usr/sbin:/home/simmondsdj/scripts:/data/Luna1/ni_tools/processing_scripts:/data/Luna1/ni_tools/fsl/bin:/data/Luna1/ni_tools/afni_2Apr2013:/usr/local/packages/torque/2.4.16/bin:/usr/kerberos/bin
-#/home/simmondsdj/scripts # custom scripts
-#/data/Luna1/ni_tools/processing_scripts # preprocessFunctional, preprocessMprage
-#/data/Luna1/ni_tools/fsl/bin # fsl commands
-#/data/Luna1/ni_tools/afni # afni commands
-  # temp replacement with afni_2Apr2013, since newest version is gettin a python error with 1d_tool.py
-#/usr/local/packages/torque/2.4.16/bin:/usr/kerberos/bin # wallace paths
-
 # e-mails all output
-#MAILTO=djsimmonds@gmail.com
+#MAILTO=djsimmonds+cron@gmail.com
 
 # copies data and runs processing scripts and copies data over to skynet
 0 0 * * * /home/simmondsdj/cron/cronEAOC

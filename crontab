@@ -25,9 +25,9 @@
 #MAILTO=djsimmonds@gmail.com
 
 # copies data and runs processing scripts and copies data over to skynet
-#0 0 * * * /home/simmondsdj/scripts/cronEAOC
-#0 1 * * * /home/simmondsdj/scripts/cronMM
-17 13 * * * /home/simmondsdj/scripts/cronCOG
+0 0 * * * /home/simmondsdj/cron/cronEAOC
+0 1 * * * /home/simmondsdj/cron/cronMM
+0 2 * * * /home/simmondsdj/cron/cronCOG
 
 # weekly summary
 #0 0 * * 1 weeklySummary

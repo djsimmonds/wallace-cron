@@ -15,7 +15,7 @@ mkdir -p $dirProcess
 ipCopy=skynet # computer destination of processed data
 dirCopy=/Volumes/Phillips/WorkingMemory # directory destination of processed data
 ssh $ipCopy mkdir -p $dirCopy
-dirScripts=/home/simmondsdj/scripts # qsub not running scripts without absolute path
+dirScripts=/home/simmondsdj/cron # qsub not running scripts without absolute path
 scans="MPRAGE WM_RUN1 WM_RUN2 WM_RUN3 WM_RUN4 DTI" # which scans to process - for example: scans="MPRAGE TASK1 TASK2 TASK3 TASK4 REST DTI MRS"
 fmriScans="WM_RUN1 WM_RUN2 WM_RUN3 WM_RUN4" # these will be skipped if MPRAGE is missing or has error
 dicomID="MR"

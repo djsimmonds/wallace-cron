@@ -13,13 +13,13 @@ mkdir -p $dirProcess
 ipCopy=skynet # computer destination of processed data
 dirCopy=/Volumes/Phillips/COG # directory destination of processed data
 ssh $ipCopy mkdir -p $dirCopy
-dirScripts=/home/simmondsdj/scripts # qsub not running scripts without absolute path
+dirScripts=/home/simmondsdj/cron # qsub not running scripts without absolute path
 scans="MPR AS1 AS2 AS3 AS4 MS1 MS2 MS3 DTI" # which scans to process - for example: scans="MPRAGE TASK1 TASK2 TASK3 TASK4 REST DTI MRS"
 fmriScans="AS1 AS2 AS3 AS4 MS1 MS2 MS3" # these will be skipped if MPRAGE is missing or has error
 #email=djsimmonds+cron@gmail.com # email if error
 
 # set up PATH (cron only uses basic environment)
-export PATH=/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/sbin:/usr/sbin:/home/simmondsdj/scripts:/data/Luna1/ni_tools/processing_scripts:/data/Luna1/ni_tools/fsl/bin:/data/Luna1/ni_tools/afni_2Apr2013:/usr/local/packages/torque/2.4.16/bin:/usr/kerberos/bin
+export PATH=/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/sbin:/usr/sbin:/home/simmondsdj/cron:/data/Luna1/ni_tools/processing_scripts:/data/Luna1/ni_tools/fsl/bin:/data/Luna1/ni_tools/afni_2Apr2013:/usr/local/packages/torque/2.4.16/bin:/usr/kerberos/bin
 #/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/sbin:/usr/sbin # basic paths
 #/home/simmondsdj/scripts # custom scripts
 #/data/Luna1/ni_tools/processing_scripts # preprocessFunctional, preprocessMprage

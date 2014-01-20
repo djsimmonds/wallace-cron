@@ -20,6 +20,20 @@ scans="MPRAGE MM_RUN1 MM_RUN2 MM_RUN3 MM_RUN4 DTI" # which scans to process - fo
 fmriScans="MM_RUN1 MM_RUN2 MM_RUN3 MM_RUN4" # these will be skipped if MPRAGE is missing or has error
 dicomID="MR"
 #email=djsimmonds+cron@gmail.com # email if error
+
+# set up PATH (cron only uses basic environment)
+export PATH=/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/sbin:/usr/sbin:/home/simmondsdj/cron:/data/Luna1/ni_tools/processing_scripts:/data/Luna1/ni_tools/fsl/bin:/data/Luna1/ni_tools/afni_2Apr2013:/usr/local/packages/torque/2.4.16/bin:/usr/kerberos/bin
+#/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/sbin:/usr/sbin # basic paths
+#/home/simmondsdj/scripts # custom scripts
+#/data/Luna1/ni_tools/processing_scripts # preprocessFunctional, preprocessMprage
+#/data/Luna1/ni_tools/fsl/bin # fsl commands
+#/data/Luna1/ni_tools/afni # afni commands
+  # temp replacement with afni_2Apr2013, since newest version is gettin a python error with 1d_tool.py
+#/usr/local/packages/torque/2.4.16/bin:/usr/kerberos/bin # wallace paths
+
+# also might need FSLDIR and NITOOLS
+export FSLDIR=/data/Luna1/ni_tools/fsl
+export NITOOLS=/data/Luna1/ni_tools
    
 # source directory must exist in order to proceed
 if [ ! -d $dirSource ]; then echo "source directory not found"; exit 1; fi
